@@ -1,17 +1,17 @@
 package main
 
 import (
-	"./ddns"
 	"fmt"
-	"math/rand"
-	"time"
-	"io/ioutil"
+	"github.com/OpaL2/dy.fi-client/ddns"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
+	"math/rand"
 	"os"
+	"time"
 )
 
 const (
-	interval = time.Hour //interval between update required check
+	interval = time.Hour  //interval between update required check
 )
 
 type DyConfiguration struct {
@@ -25,70 +25,90 @@ type DdnsUpdater interface {
 	Update() error
 }
 
+type updater struct {
+	Updater DdnsUpdater
+}
+
 func main() {
+	fmt.Print("Starting...\n")
 	args := os.Args
 	if len(args) == 1 {
 		panic("No configuration file provided -- exiting...")
 	}
-
+	fmt.Print("Loading configuration...\n")
 	config := loadConfiguration(args[1])
+	fmt.Print("Configuration loaded\n")
 	ddns := ddns.NewDdnsUpdater(config.Hostname, config.Username, config.Password, nil)
 
-	res, err := ddns.RequireUpdate()
+	fmt.Print("Testing connection...\n")
+	//connection testing
+	_, err := ddns.RequireUpdate()
 
 	if err != nil {
 		panic(err)
 	}
+	fmt.Print("Connection test completed\n")
 
-	if res {
-		ch := scheduleUpdate(ddns, 10*time.Second)
-		err = <-ch
-		if err != nil {
-			fmt.Print(err)
+	cErr := make(chan error)
+	update := make(chan struct{})
+	testUpdate := make(chan chan bool)
+
+	go func() {
+		for ch := range testUpdate {
+			res, err := ddns.RequireUpdate()
+			if err != nil {
+				cErr <- err
+			}
+			ch <- res
 		}
-	}
+	}()
+
+	go func() {
+		for range update {
+			err := ddns.Update()
+			if err != nil {
+				cErr <- err
+			}
+		}
+	}()
+
+	var updateTimer <- chan time.Time
+	var testReturn chan bool
+	updateTimer = nil
+	testTimeout := time.NewTimer(interval)
+	testReturn = nil
 
 	for {
-		time.Sleep(interval)
-		res, err := ddns.RequireUpdate()
-		if err != nil {
+		select {
+		case <-testTimeout.C:
+			testTimeout.Reset(interval)
+			testReturn = make(chan bool)
+			testUpdate <- testReturn
+
+		case <-updateTimer:
+			update <- struct{}{}
+
+		case err := <-cErr:
 			fmt.Print(err)
-		} else {
+
+		case res := <-testReturn:
 			if res {
-				ch := scheduleUpdate(ddns, 15*time.Minute)
-				err := <-ch
-				if err != nil {
-					fmt.Print(err)
-				}
-			} else {
-				fmt.Print("%v: %v\n", time.Now(), "No dns record update required")
+				updateTimer = time.After(time.Duration(rand.Int63n(int64(time.Minute*15))))
 			}
 		}
 	}
-
 }
 
-func scheduleUpdate(ddns DdnsUpdater, maxSleep time.Duration) chan error {
-	ch := make(chan error)
-	wait := time.Duration(rand.Int63n(int64(maxSleep)))
-	go updateDyRecords(ddns, wait, ch)
-	return ch
-}
-
-func updateDyRecords(ddns DdnsUpdater, t time.Duration, ch chan error) {
-	time.Sleep(t)
-	ch <- ddns.Update()
-}
 
 func loadConfiguration(filename string) *DyConfiguration {
 	data, err := ioutil.ReadFile(filename)
-	if (err != nil) {
+	if err != nil {
 		panic("Could not read configuration file -- exiting...")
 	}
 
 	var config DyConfiguration
 	err = yaml.UnmarshalStrict(data, &config)
-	if (err != nil) {
+	if err != nil {
 		panic(fmt.Sprintf("Invalid configuration file -- exiting..."))
 	}
 
