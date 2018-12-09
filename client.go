@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/OpaL2/dy.fi-client/ddns"
-	"gopkg.in/yaml.v2"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"time"
@@ -20,6 +18,10 @@ type DyConfiguration struct {
 	Password string
 }
 
+func (c *DyConfiguration) String() string {
+	return fmt.Sprintf("Config: \n\tUsename: %v \n\tHostname: %v \n\tPassword:secret\n ", c.Username, c.Hostname)
+}
+
 type DdnsUpdater interface {
 	RequireUpdate() (bool, error)
 	Update() error
@@ -31,12 +33,9 @@ type updater struct {
 
 func main() {
 	fmt.Print("Starting...\n")
-	args := os.Args
-	if len(args) == 1 {
-		panic("No configuration file provided -- exiting...")
-	}
 	fmt.Print("Loading configuration...\n")
-	config := loadConfiguration(args[1])
+	config := loadConfiguration()
+	fmt.Print(config)
 	fmt.Print("Configuration loaded\n")
 	ddns := ddns.NewDdnsUpdater(config.Hostname, config.Username, config.Password, nil)
 
@@ -100,18 +99,14 @@ func main() {
 }
 
 
-func loadConfiguration(filename string) *DyConfiguration {
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic("Could not read configuration file -- exiting...")
+func loadConfiguration() *DyConfiguration {
+
+	config := &DyConfiguration{
+		Hostname: os.Getenv("HOSTNAME"),
+		Username: os.Getenv("USERNAME"),
+		Password: os.Getenv("PASSWORD"),
 	}
 
-	var config DyConfiguration
-	err = yaml.UnmarshalStrict(data, &config)
-	if err != nil {
-		panic(fmt.Sprintf("Invalid configuration file -- exiting..."))
-	}
-
-	return &config
+	return config
 
 }
