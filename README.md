@@ -2,6 +2,19 @@
 
 Golang client for dy.fi dynamic dns -service
 
-Client takes in configuration file as first argument and template config.yaml is included in repository. Log is printed to stdout.
+Client is runned inside docker and credentials are provided as environment variables.
 
-Client checks hourly if update dns record update is required and schedules update if required. Update is executed in 15 minutes from scheduling. 
+Following compose file can be used as base:
+
+```yaml
+version: '3'
+
+services:
+  client:
+    build: github.com/OpaL2/dy.fi-client
+    environment:
+      - HOSTNAME=
+      - USERNAME=
+      - PASSWORD
+    restart: always
+```
